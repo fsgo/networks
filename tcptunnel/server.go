@@ -47,7 +47,7 @@ func (s *Server) BindFlags() {
 	ef.StringVar(&s.ListenClient, "in", "TT_S_in", ":8090", "addr for tunnel client")
 	ef.StringVar(&s.Token, "token", "TT_S_token", defaultToken, "token")
 	ef.IntVar(&s.Size, "size", "TT_S_size", 10, "connection chan buffer size")
-	ef.DurationVar(&s.ClientExpire, "exp", "TT_S_exp", 3*time.Minute, "client connections expire")
+	ef.DurationVar(&s.ClientExpire, "exp", "TT_S_exp", 10*time.Minute, "client connections expire")
 }
 
 func (s *Server) getSize() int {
@@ -90,11 +90,15 @@ func (s *Server) startListenOut() error {
 			log.Println(msg, "closed, err=", err1, ",cost=", cost.String())
 		}),
 	}
+	go s.cleanOldClients()
 	return fs.Serve(l)
 }
 
 func (s *Server) cleanOldClients() {
-	tm := time.NewTimer(time.Second)
+	if s.ClientExpire <= time.Second {
+		return
+	}
+	tm := time.NewTimer(5 * time.Second)
 	var dropID atomic.Int64
 
 	checkDrop := func() {
@@ -127,12 +131,9 @@ func (s *Server) cleanOldClients() {
 		}
 	}
 
-	go func() {
-		for {
-			<-tm.C
-			checkDrop()
-		}
-	}()
+	for range tm.C {
+		checkDrop()
+	}
 }
 
 func (s *Server) startListenClient() error {
