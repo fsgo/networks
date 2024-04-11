@@ -1,11 +1,11 @@
 module github.com/fsgo/networks
 
-go 1.21
+go 1.22
 
 require (
 	github.com/fsgo/fsgo v0.0.7-0.20231008044139-af3211af31ec
-	github.com/stretchr/testify v1.8.4
-	golang.org/x/sync v0.4.0
+	github.com/stretchr/testify v1.9.0
+	golang.org/x/sync v0.7.0
 )
 
 require (

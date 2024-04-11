@@ -65,6 +65,14 @@ func (s *Server) Start() error {
 	return eg.Wait()
 }
 
+func isBadConn(rd io.ReadWriteCloser) error {
+	conn, ok := rd.(net.Conn)
+	if !ok {
+		return nil
+	}
+	return internal.ConnCheck(conn)
+}
+
 func (s *Server) startListenOut() error {
 	log.Println("Listen tunnelOutServer at:", s.ListenOut)
 	l, err := net.Listen("tcp", s.ListenOut)
@@ -76,22 +84,44 @@ func (s *Server) startListenOut() error {
 	fs := &fsserver.AnyServer{
 		Handler: fsserver.HandleFunc(func(ctx context.Context, conn net.Conn) {
 			id := connID.Add(1)
-			msg := fmt.Sprintf("[server conn] [%d] ", id) + rwInfo(conn) + fmt.Sprintf(" client.len=%d", len(s.clientConns))
-
-			log.Println(msg)
-			start := time.Now()
-			in := <-s.clientConns
-
-			s.lastUse.Store(time.Now())
-
-			err1 := internal.RWCopy(in, conn)
-			cost := time.Since(start)
-
-			log.Println(msg, "closed, err=", err1, ",cost=", cost.String())
+			s.outHandler(ctx, conn, id)
 		}),
 	}
 	go s.cleanOldClients()
 	return fs.Serve(l)
+}
+
+func (s *Server) outHandler(ctx context.Context, conn net.Conn, id int64) {
+	msg := fmt.Sprintf("[server conn] [%d] ", id) + rwInfo(conn) + fmt.Sprintf(" client.len=%d", len(s.clientConns))
+
+	log.Println(msg)
+	start := time.Now()
+
+	var exitErr error
+	defer func() {
+		cost := time.Since(start)
+		log.Println(msg, "closed, err=", exitErr, ",cost=", cost.String())
+	}()
+
+	var in io.ReadWriteCloser
+	for idx := 0; idx < 100; idx++ {
+		select {
+		case in = <-s.clientConns:
+		case <-ctx.Done():
+			exitErr = context.Cause(ctx)
+			return
+		}
+
+		if err1 := isBadConn(in); err1 != nil {
+			log.Println(msg, "ignore bad conn, err=", err1, ",try=", idx)
+		} else {
+			break
+		}
+	}
+
+	s.lastUse.Store(time.Now())
+
+	exitErr = internal.RWCopy(in, conn)
 }
 
 func (s *Server) cleanOldClients() {
@@ -147,44 +177,48 @@ func (s *Server) startListenClient() error {
 	fs := &fsserver.AnyServer{
 		Handler: fsserver.HandleFunc(func(ctx context.Context, conn net.Conn) {
 			id := connID.Add(1)
-			msg := fmt.Sprintf("[client conn] [%d] ", id) + rwInfo(conn)
-
-			rw := rwWithToken(conn, s.Token)
-
-			// 校验是否由客户端发送请求
-			if err1 := s.checkClientConn(conn, rw); err1 != nil {
-				_ = rw.Close()
-				log.Println(msg, "invalid client, err=", err1)
-				return
-			}
-
-			ctx1, cancel := context.WithTimeout(ctx, time.Second)
-			defer cancel()
-
-			select {
-			case s.clientConns <- rw:
-				log.Println(msg, "received, client.len=", len(s.clientConns))
-				return
-			case <-ctx1.Done():
-				// buffer 满的情况下，尝试将旧的连接取出，新的连接放进去
-				select {
-				case in := <-s.clientConns:
-					_ = in.Close()
-					select {
-					case s.clientConns <- rw:
-						log.Println(msg, "replaced, client.len=", len(s.clientConns))
-					default:
-						log.Println(msg, "dropped by no buffer")
-						_ = rw.Close()
-					}
-				default:
-					_ = rw.Close()
-					log.Println(msg, "dropped by replaced")
-				}
-			}
+			s.clientHandler(ctx, conn, id)
 		}),
 	}
 	return fs.Serve(l)
+}
+
+func (s *Server) clientHandler(ctx context.Context, conn net.Conn, id int64) {
+	msg := fmt.Sprintf("[client conn] [%d] ", id) + rwInfo(conn)
+
+	rw := rwWithToken(conn, s.Token)
+
+	// 校验是否由客户端发送请求
+	if err1 := s.checkClientConn(conn, rw); err1 != nil {
+		_ = rw.Close()
+		log.Println(msg, "invalid client, err=", err1)
+		return
+	}
+
+	ctx1, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	select {
+	case s.clientConns <- rw:
+		log.Println(msg, "received, client.len=", len(s.clientConns))
+		return
+	case <-ctx1.Done():
+		// buffer 满的情况下，尝试将旧的连接取出，新的连接放进去
+		select {
+		case in := <-s.clientConns:
+			_ = in.Close()
+			select {
+			case s.clientConns <- rw:
+				log.Println(msg, "replaced, client.len=", len(s.clientConns))
+			default:
+				log.Println(msg, "dropped by no buffer")
+				_ = rw.Close()
+			}
+		default:
+			_ = rw.Close()
+			log.Println(msg, "dropped by replaced")
+		}
+	}
 }
 
 func (s *Server) checkClientConn(conn net.Conn, rw io.ReadWriteCloser) error {
