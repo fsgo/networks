@@ -78,6 +78,7 @@ func (c *Tunneler) localWorker(id int, ec chan<- error) {
 	}()
 	for rw := range c.remoteRWChan {
 		if err := isBadConn(rw); err != nil {
+			_ = rw.Close()
 			log.Println("remote conn is bad, err=", err)
 			continue
 		}

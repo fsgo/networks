@@ -65,14 +65,6 @@ func (s *Server) Start() error {
 	return eg.Wait()
 }
 
-func isBadConn(rd io.ReadWriteCloser) error {
-	conn, ok := rd.(net.Conn)
-	if !ok {
-		return nil
-	}
-	return internal.ConnCheck(conn)
-}
-
 func (s *Server) startListenOut() error {
 	log.Println("Listen tunnelOutServer at:", s.ListenOut)
 	l, err := net.Listen("tcp", s.ListenOut)
@@ -112,11 +104,13 @@ func (s *Server) outHandler(ctx context.Context, conn net.Conn, id int64) {
 			return
 		}
 
-		if err1 := isBadConn(in); err1 != nil {
-			log.Println(msg, "ignore bad conn, err=", err1, ",try=", idx)
-		} else {
+		exitErr = isBadConn(in)
+
+		if exitErr == nil {
 			break
 		}
+		_ = in.Close()
+		log.Println(msg, "ignore bad conn, err=", exitErr, ",try=", idx)
 	}
 
 	s.lastUse.Store(time.Now())

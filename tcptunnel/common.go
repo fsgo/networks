@@ -13,6 +13,8 @@ import (
 	"io"
 	"net"
 	"time"
+
+	"github.com/fsgo/networks/internal"
 )
 
 func wait(n int) {
@@ -91,4 +93,12 @@ func rwInfo(rd io.Reader) string {
 		return fs.String()
 	}
 	return fmt.Sprintf("%#v", rd)
+}
+
+func isBadConn(rd io.ReadWriteCloser) error {
+	conn, ok := rd.(net.Conn)
+	if !ok {
+		return nil
+	}
+	return internal.ConnCheck(conn)
 }
