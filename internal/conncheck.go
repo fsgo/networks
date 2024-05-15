@@ -36,16 +36,16 @@ func ConnCheck(conn net.Conn) error {
 
 	err = rawConn.Read(func(fd uintptr) bool {
 		var buf [1]byte
-		n, err := syscall.Read(int(fd), buf[:])
+		n, errRead := syscall.Read(int(fd), buf[:])
 		switch {
-		case n == 0 && err == nil:
+		case n == 0 && errRead == nil:
 			sysErr = io.EOF
 		case n > 0:
 			sysErr = errUnexpectedRead
-		case err == syscall.EAGAIN || err == syscall.EWOULDBLOCK:
+		case errors.Is(errRead, syscall.EAGAIN) || errors.Is(errRead, syscall.EWOULDBLOCK):
 			sysErr = nil
 		default:
-			sysErr = err
+			sysErr = errRead
 		}
 		return true
 	})

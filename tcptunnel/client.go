@@ -34,11 +34,14 @@ type Client struct {
 	Token string
 
 	stopped atomic.Bool
+
+	clientConnID atomic.Int64
+	serverConnID atomic.Int64
 }
 
 func (c *Client) BindFlags() {
 	ef := fsflag.EnvFlags{}
-	ef.StringVar(&c.ServerAddr, "remote", "TT_C_remove", "127.0.0.1:8090", "remote  tunnel server addr")
+	ef.StringVar(&c.ServerAddr, "remote", "TT_C_remove", "127.0.0.1:8090", "remote tunnel server addr")
 	ef.StringVar(&c.LocalAddr, "local", "TT_C_local", "127.0.0.1:8128", "local server addr tunnel to")
 	ef.IntVar(&c.Worker, "worker", "TT_C_worker", 3, "worker number")
 	ef.StringVar(&c.Token, "token", "TT_C_token", defaultToken, "token")
@@ -49,8 +52,9 @@ func (c *Client) Start() error {
 	log.Println("Remote Addr=", c.ServerAddr, ", Local Addr=", c.LocalAddr)
 	tl := &Tunneler{
 		Worker:   c.Worker,
-		RemoteRW: c.connectToServer(),
-		LocalRW:  c.connectToClient(),
+		Token:    c.Token,
+		RemoteRW: c.connectToServer,
+		LocalRW:  c.connectToClient,
 	}
 	return tl.Start()
 }
@@ -65,49 +69,42 @@ func (c *Client) getConnectTimeout() time.Duration {
 var helloMsgReq = []byte("Hello")
 var helloMsgResp = []byte("OK")
 
-func (c *Client) connectToServer() func() io.ReadWriteCloser {
-	var connID atomic.Int64
-
-	checkServer := func(rw io.ReadWriteCloser) error {
-		// 单独发送一个消息给 server，用于检验 token
-		// 若 server 解析不出来，server 会主动断开连接
-		if _, err := rw.Write(helloMsgReq); err != nil {
-			return fmt.Errorf("write helloMsgReq failed: %w", err)
-		}
-		bf := make([]byte, len(helloMsgResp))
-		if _, err := io.ReadFull(rw, bf); err != nil {
-			return fmt.Errorf("read helloMsgResp failed: %w", err)
-		}
-		if !bytes.Equal(bf, helloMsgResp) {
-			return fmt.Errorf("invalid helloMsgResp: %q", bf)
-		}
-		return nil
+func (c *Client) checkServerToken(rw io.ReadWriteCloser) error {
+	// 单独发送一个消息给 server，用于检验 token
+	// 若 server 解析不出来，server 会主动断开连接
+	if _, err := rw.Write(helloMsgReq); err != nil {
+		return fmt.Errorf("write helloMsgReq failed: %w", err)
 	}
-
-	return func() io.ReadWriteCloser {
-		for i := 0; ; i++ {
-			rw := c.connectTo("server", c.ServerAddr, connID.Add(1))
-			if rw == nil {
-				return nil
-			}
-			rw = rwWithToken(rw, c.Token)
-			if err := checkServer(rw); err != nil {
-				_ = rw.Close()
-				log.Println("[connect_server]", rwInfo(rw), "check server conn failed,", err)
-				wait(i)
-				continue
-			}
-			return rw
-		}
-		return nil
+	bf := make([]byte, len(helloMsgResp))
+	if _, err := io.ReadFull(rw, bf); err != nil {
+		return fmt.Errorf("read helloMsgResp failed: %w", err)
 	}
+	if !bytes.Equal(bf, helloMsgResp) {
+		return fmt.Errorf("invalid helloMsgResp: %q", bf)
+	}
+	return nil
 }
 
-func (c *Client) connectToClient() func() io.ReadWriteCloser {
-	var connID atomic.Int64
-	return func() io.ReadWriteCloser {
-		return c.connectTo("local", c.LocalAddr, connID.Add(1))
+func (c *Client) connectToServer() io.ReadWriteCloser {
+	for i := 0; ; i++ {
+		rw := c.connectTo("server", c.ServerAddr, c.serverConnID.Add(1))
+		if rw == nil {
+			return nil
+		}
+		rw = rwWithToken(rw, c.Token)
+		if err := c.checkServerToken(rw); err != nil {
+			_ = rw.Close()
+			log.Println("[connect_server]", rwInfo(rw), "check server conn failed,", err)
+			wait(i)
+			continue
+		}
+		return rw
 	}
+	return nil
+}
+
+func (c *Client) connectToClient() io.ReadWriteCloser {
+	return c.connectTo("local", c.LocalAddr, c.clientConnID.Add(1))
 }
 
 func (c *Client) connectTo(tp string, address string, id int64) io.ReadWriteCloser {

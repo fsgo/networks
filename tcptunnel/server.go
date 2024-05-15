@@ -18,8 +18,6 @@ import (
 	"github.com/fsgo/fsgo/fsserver"
 	"github.com/fsgo/fsgo/fssync/fsatomic"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/fsgo/networks/internal"
 )
 
 type Server struct {
@@ -31,6 +29,8 @@ type Server struct {
 
 	// Token 加密密码，可选
 	Token string
+
+	cipherKey []byte
 
 	ClientExpire time.Duration
 
@@ -59,6 +59,8 @@ func (s *Server) getSize() int {
 
 func (s *Server) Start() error {
 	s.clientConns = make(chan io.ReadWriteCloser, s.getSize())
+	s.cipherKey = aesCipherKey(s.Token)
+
 	eg := &errgroup.Group{}
 	eg.Go(s.startListenOut)
 	eg.Go(s.startListenClient)
@@ -66,6 +68,7 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) startListenOut() error {
+	// 对外暴露的端口，最终用户通过访问此端口来访问到内网的端口
 	log.Println("Listen tunnelOutServer at:", s.ListenOut)
 	l, err := net.Listen("tcp", s.ListenOut)
 	if err != nil {
@@ -95,27 +98,28 @@ func (s *Server) outHandler(ctx context.Context, conn net.Conn, id int64) {
 		log.Println(msg, "closed, err=", exitErr, ",cost=", cost.String())
 	}()
 
-	var in io.ReadWriteCloser
+	// tunnel-client 的 net.conn
+	var remote io.ReadWriteCloser
 	for idx := 0; idx < 100; idx++ {
 		select {
-		case in = <-s.clientConns:
+		case remote = <-s.clientConns:
 		case <-ctx.Done():
 			exitErr = context.Cause(ctx)
 			return
 		}
 
-		exitErr = isBadConn(in)
+		exitErr = isBadConn(remote)
 
 		if exitErr == nil {
 			break
 		}
-		_ = in.Close()
+		_ = remote.Close()
 		log.Println(msg, "ignore bad conn, err=", exitErr, ",try=", idx)
 	}
 
 	s.lastUse.Store(time.Now())
 
-	exitErr = internal.RWCopy(in, conn)
+	exitErr = aesRWCopy(remote, conn, s.cipherKey)
 }
 
 func (s *Server) cleanOldClients() {

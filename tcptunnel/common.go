@@ -102,3 +102,48 @@ func isBadConn(rd io.ReadWriteCloser) error {
 	}
 	return internal.ConnCheck(conn)
 }
+
+func aesCipherKey(token string) []byte {
+	m5 := md5.New()
+	m5.Write([]byte("b248cecaa03018b3f1d96aba3c9a661b"))
+	m5.Write([]byte(token))
+	return []byte(hex.EncodeToString(m5.Sum(nil)))
+}
+
+func aesReader(rd io.Reader, key []byte) io.Reader {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err)
+	}
+	var iv [aes.BlockSize]byte
+	stream := cipher.NewOFB(block, iv[:])
+
+	return &cipher.StreamReader{S: stream, R: rd}
+}
+
+func aesWriter(rw io.Writer, key []byte) io.Writer {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err)
+	}
+
+	var iv [aes.BlockSize]byte
+	stream := cipher.NewOFB(block, iv[:])
+
+	return &cipher.StreamWriter{S: stream, W: rw}
+}
+
+func aesRWCopy(remote io.ReadWriteCloser, local io.ReadWriteCloser, key []byte) error {
+	defer remote.Close()
+	defer local.Close()
+	ec := make(chan error, 2)
+	go func() {
+		_, err := io.Copy(aesWriter(remote, key), local)
+		ec <- err
+	}()
+	go func() {
+		_, err := io.Copy(local, aesReader(remote, key))
+		ec <- err
+	}()
+	return <-ec
+}
