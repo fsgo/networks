@@ -18,6 +18,8 @@ import (
 	"github.com/fsgo/fsgo/fsserver"
 	"github.com/fsgo/fsgo/fssync/fsatomic"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/fsgo/networks/internal"
 )
 
 type Server struct {
@@ -29,8 +31,6 @@ type Server struct {
 
 	// Token 加密密码，可选
 	Token string
-
-	cipherKey []byte
 
 	ClientExpire time.Duration
 
@@ -59,7 +59,6 @@ func (s *Server) getSize() int {
 
 func (s *Server) Start() error {
 	s.clientConns = make(chan io.ReadWriteCloser, s.getSize())
-	s.cipherKey = aesCipherKey(s.Token)
 
 	eg := &errgroup.Group{}
 	eg.Go(s.startListenOut)
@@ -119,7 +118,7 @@ func (s *Server) outHandler(ctx context.Context, conn net.Conn, id int64) {
 
 	s.lastUse.Store(time.Now())
 
-	exitErr = aesRWCopy(remote, conn, s.cipherKey)
+	exitErr = internal.RWCopy(remote, conn)
 }
 
 func (s *Server) cleanOldClients() {
@@ -220,7 +219,7 @@ func (s *Server) clientHandler(ctx context.Context, conn net.Conn, id int64) {
 }
 
 func (s *Server) checkClientConn(conn net.Conn, rw io.ReadWriteCloser) error {
-	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 	bf := make([]byte, len(helloMsgReq))
 	if _, err1 := io.ReadFull(rw, bf); err1 != nil {
 		return fmt.Errorf("read helloMsgReq failed: %w", err1)

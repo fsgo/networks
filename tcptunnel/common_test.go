@@ -9,7 +9,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/fsgo/fst"
 )
 
 func Test_rwWithToken(t *testing.T) {
@@ -18,20 +18,20 @@ func Test_rwWithToken(t *testing.T) {
 		b1 := &tb{bf: bf}
 		w1 := rwWithToken(b1, "")
 		_, e1 := w1.Write([]byte("hello"))
-		require.NoError(t, e1)
-		require.Equal(t, "hello", bf.String())
+		fst.NoError(t, e1)
+		fst.Equal(t, "hello", bf.String())
 		content, _ := io.ReadAll(w1)
-		require.Equal(t, "hello", string(content))
+		fst.Equal(t, "hello", string(content))
 	})
 	t.Run("has", func(t *testing.T) {
 		bf := &bytes.Buffer{}
 		b1 := &tb{bf: bf}
 		w1 := rwWithToken(b1, "hello-world")
 		_, e1 := w1.Write([]byte("hello"))
-		require.NoError(t, e1)
-		require.NotEqual(t, "hello", bf.String())
+		fst.NoError(t, e1)
+		fst.NotEqual(t, "hello", bf.String())
 		content, _ := io.ReadAll(w1)
-		require.Equal(t, "hello", string(content))
+		fst.Equal(t, "hello", string(content))
 	})
 }
 

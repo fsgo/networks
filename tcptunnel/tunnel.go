@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/fsgo/networks/internal"
 )
 
 const defaultToken = "hello:tcp-tunnel"
@@ -25,8 +27,7 @@ type Tunneler struct {
 
 	Worker int
 
-	Token     string
-	cipherKey []byte
+	Token string
 
 	remoteRWChan chan io.ReadWriteCloser
 	stopped      atomic.Bool
@@ -41,7 +42,6 @@ func (c *Tunneler) getWorker() int {
 
 func (c *Tunneler) Start() error {
 	c.remoteRWChan = make(chan io.ReadWriteCloser, c.getWorker())
-	c.cipherKey = aesCipherKey(c.Token)
 
 	var eg errgroup.Group
 	eg.Go(c.connectToRemote)
@@ -94,7 +94,7 @@ func (c *Tunneler) localWorker(id int, ec chan<- error) {
 		}
 		start := time.Now()
 
-		err1 := aesRWCopy(remoteConn, localConn, c.cipherKey)
+		err1 := internal.RWCopy(remoteConn, localConn)
 		cost := time.Since(start)
 		log.Println("copy remote to local, cost=", cost.String(), "err=", err1)
 	}

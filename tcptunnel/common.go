@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/fsgo/networks/internal"
@@ -25,20 +26,31 @@ func wait(n int) {
 	time.Sleep(time.Second)
 }
 
+var tokenCache sync.Map
+
 func newStream(token string) cipher.Stream {
-	m := md5.New()
-	m.Write([]byte(token))
-	key := []byte(hex.EncodeToString(m.Sum(nil)))
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		panic(err)
+	val, has := tokenCache.Load(token)
+	var block cipher.Block
+	if has {
+		block = val.(cipher.Block)
+	} else {
+		m := md5.New()
+		m.Write([]byte("45869c46255b13cd1d740b0ce6c11d61"))
+		m.Write([]byte(token))
+		key := []byte(hex.EncodeToString(m.Sum(nil)))
+		var err error
+		block, err = aes.NewCipher(key)
+		if err != nil {
+			panic(err)
+		}
+		tokenCache.Store(token, block)
 	}
 	var iv [aes.BlockSize]byte
 	return cipher.NewOFB(block, iv[:])
 }
 
 func rwWithToken(rw io.ReadWriteCloser, token string) io.ReadWriteCloser {
-	if token == "" || token == "no" {
+	if token == "no" {
 		return rw
 	}
 	writer := &cipher.StreamWriter{
@@ -53,7 +65,7 @@ func rwWithToken(rw io.ReadWriteCloser, token string) io.ReadWriteCloser {
 	w := &rwWrapper{
 		w:   writer,
 		r:   reader,
-		c:   rw,
+		rw:  rw,
 		msg: rwInfo(rw),
 	}
 	return w
@@ -64,7 +76,7 @@ var _ io.ReadWriteCloser = (*rwWrapper)(nil)
 type rwWrapper struct {
 	w   io.WriteCloser
 	r   io.Reader
-	c   io.Closer
+	rw  io.Closer
 	msg string
 }
 
@@ -78,11 +90,19 @@ func (e *rwWrapper) Write(p []byte) (n int, err error) {
 
 func (e *rwWrapper) Close() error {
 	_ = e.w.Close()
-	return e.c.Close()
+	return e.rw.Close()
 }
 
 func (e *rwWrapper) String() string {
 	return e.msg
+}
+
+func (e *rwWrapper) isBadConn() error {
+	conn, ok := e.rw.(net.Conn)
+	if !ok {
+		return nil
+	}
+	return internal.ConnCheck(conn)
 }
 
 func rwInfo(rd io.Reader) string {
@@ -96,54 +116,12 @@ func rwInfo(rd io.Reader) string {
 }
 
 func isBadConn(rd io.ReadWriteCloser) error {
+	if conn, ok := rd.(interface{ isBadConn() error }); ok {
+		return conn.isBadConn()
+	}
 	conn, ok := rd.(net.Conn)
 	if !ok {
 		return nil
 	}
 	return internal.ConnCheck(conn)
-}
-
-func aesCipherKey(token string) []byte {
-	m5 := md5.New()
-	m5.Write([]byte("b248cecaa03018b3f1d96aba3c9a661b"))
-	m5.Write([]byte(token))
-	return []byte(hex.EncodeToString(m5.Sum(nil)))
-}
-
-func aesReader(rd io.Reader, key []byte) io.Reader {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		panic(err)
-	}
-	var iv [aes.BlockSize]byte
-	stream := cipher.NewOFB(block, iv[:])
-
-	return &cipher.StreamReader{S: stream, R: rd}
-}
-
-func aesWriter(rw io.Writer, key []byte) io.Writer {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		panic(err)
-	}
-
-	var iv [aes.BlockSize]byte
-	stream := cipher.NewOFB(block, iv[:])
-
-	return &cipher.StreamWriter{S: stream, W: rw}
-}
-
-func aesRWCopy(remote io.ReadWriteCloser, local io.ReadWriteCloser, key []byte) error {
-	defer remote.Close()
-	defer local.Close()
-	ec := make(chan error, 2)
-	go func() {
-		_, err := io.Copy(aesWriter(remote, key), local)
-		ec <- err
-	}()
-	go func() {
-		_, err := io.Copy(local, aesReader(remote, key))
-		ec <- err
-	}()
-	return <-ec
 }

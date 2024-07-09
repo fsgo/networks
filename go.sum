@@ -4,6 +4,8 @@ github.com/fsgo/fscache v0.0.2 h1:bKIqtSTiNjj/y9rX2gspCRsdAj/SH5WN0t1CpXCzrUY=
 github.com/fsgo/fscache v0.0.2/go.mod h1:fSqo7DUIGO6nHBbN6Xt+cbM3QUm7us1fuAOYgGZKwaE=
 github.com/fsgo/fsgo v0.0.7-0.20231008044139-af3211af31ec h1:1l7fDjzObYIxdyC1RzBSb6JaMPIJqVZ8aQ0GK1jh9y4=
 github.com/fsgo/fsgo v0.0.7-0.20231008044139-af3211af31ec/go.mod h1:JcPC5wjlkQGHtuq9dRvFegAmq+lTdDAyuFTQmQfLpAQ=
+github.com/fsgo/fst v0.0.2 h1:mrF6KJdOcMZaoj62EdPTBaXP9RXx/GIfokqR/MbD5c4=
+github.com/fsgo/fst v0.0.2/go.mod h1:vNB0la0LICDwsMuwD7KR8NNDnslYyH/1x1+fOamXra8=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
@@ -14,7 +16,5 @@ github.com/vmihailenco/tagparser/v2 v2.0.0 h1:y09buUbR+b5aycVFQs/g70pqKVZNBmxwAh
 github.com/vmihailenco/tagparser/v2 v2.0.0/go.mod h1:Wri+At7QHww0WTrCBeu4J6bNtoV6mEfg5OIWRZA9qds=
 golang.org/x/sync v0.7.0 h1:YsImfSBoP9QPYL0xyKJPq0gcaJdG3rInoqxTWbfQu9M=
 golang.org/x/sync v0.7.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
-gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
-gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
