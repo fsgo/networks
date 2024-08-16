@@ -16,7 +16,7 @@ func Test_rwWithToken(t *testing.T) {
 	t.Run("no", func(t *testing.T) {
 		bf := &bytes.Buffer{}
 		b1 := &tb{bf: bf}
-		w1 := rwWithToken(b1, "")
+		w1 := rwWithToken(b1, "no")
 		_, e1 := w1.Write([]byte("hello"))
 		fst.NoError(t, e1)
 		fst.Equal(t, "hello", bf.String())
