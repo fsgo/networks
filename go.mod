@@ -4,8 +4,8 @@ go 1.22
 
 require (
 	github.com/fsgo/fsgo v0.0.7-0.20240710132140-34d667eaee38
-	github.com/fsgo/fst v0.0.3
-	golang.org/x/sync v0.7.0
+	github.com/fsgo/fst v0.0.4
+	golang.org/x/sync v0.8.0
 )
 
 require (
