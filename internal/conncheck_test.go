@@ -21,30 +21,30 @@ func Test_connCheck(t *testing.T) {
 	t.Run("good conn", func(t *testing.T) {
 		conn, err := net.DialTimeout(ts.Listener.Addr().Network(), ts.Listener.Addr().String(), time.Second)
 		if err != nil {
-			t.Fatalf(err.Error())
+			t.Fatal(err.Error())
 		}
 		defer conn.Close()
 		if err = ConnCheck(conn); err != nil {
-			t.Fatalf(err.Error())
+			t.Fatal(err.Error())
 		}
 		conn.Close()
 
 		if err = ConnCheck(conn); err == nil {
-			t.Fatalf("expect has error")
+			t.Fatal("expect has error")
 		}
 	})
 
 	t.Run("bad conn 2", func(t *testing.T) {
 		conn, err := net.DialTimeout(ts.Listener.Addr().Network(), ts.Listener.Addr().String(), time.Second)
 		if err != nil {
-			t.Fatalf(err.Error())
+			t.Fatal(err.Error())
 		}
 		defer conn.Close()
 
 		ts.Close()
 
 		if err = ConnCheck(conn); err == nil {
-			t.Fatalf("expect has err")
+			t.Fatal("expect has err")
 		}
 	})
 }

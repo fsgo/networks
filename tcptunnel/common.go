@@ -46,7 +46,7 @@ func newStream(token string) cipher.Stream {
 		tokenCache.Store(token, block)
 	}
 	var iv [aes.BlockSize]byte
-	return cipher.NewOFB(block, iv[:])
+	return cipher.NewCTR(block, iv[:])
 }
 
 func rwWithToken(rw io.ReadWriteCloser, token string) io.ReadWriteCloser {

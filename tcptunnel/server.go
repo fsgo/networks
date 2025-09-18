@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/fsgo/fsgo/fsflag"
-	"github.com/fsgo/fsgo/fsserver"
-	"github.com/fsgo/fsgo/fssync/fsatomic"
+	"github.com/xanygo/anygo/xcmd/xflag"
+	"github.com/xanygo/anygo/xnet/xrps"
+	"github.com/xanygo/anygo/xsync"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/fsgo/networks/internal"
@@ -38,16 +38,15 @@ type Server struct {
 
 	clientConns chan io.ReadWriteCloser
 
-	lastUse fsatomic.TimeStamp
+	lastUse xsync.TimeStamp
 }
 
 func (s *Server) BindFlags() {
-	ef := fsflag.EnvFlags{}
-	ef.StringVar(&s.ListenOut, "out", "TT_S_out", "127.0.0.1:8100", "addr export")
-	ef.StringVar(&s.ListenClient, "in", "TT_S_in", ":8090", "addr for tunnel client")
-	ef.StringVar(&s.Token, "token", "TT_S_token", defaultToken, "token")
-	ef.IntVar(&s.Size, "size", "TT_S_size", 10, "connection chan buffer size")
-	ef.DurationVar(&s.ClientExpire, "exp", "TT_S_exp", 10*time.Minute, "client connections expire")
+	xflag.EnvStringVar(&s.ListenOut, "out", "TT_S_out", "127.0.0.1:8100", "addr export")
+	xflag.EnvStringVar(&s.ListenClient, "in", "TT_S_in", ":8090", "addr for tunnel client")
+	xflag.EnvStringVar(&s.Token, "token", "TT_S_token", defaultToken, "token")
+	xflag.EnvIntVar(&s.Size, "size", "TT_S_size", 10, "connection chan buffer size")
+	xflag.EnvDurationVar(&s.ClientExpire, "exp", "TT_S_exp", 10*time.Minute, "client connections expire")
 }
 
 func (s *Server) getSize() int {
@@ -75,8 +74,8 @@ func (s *Server) startListenOut() error {
 	}
 	var connID atomic.Int64
 
-	fs := &fsserver.AnyServer{
-		Handler: fsserver.HandleFunc(func(ctx context.Context, conn net.Conn) {
+	fs := &xrps.AnyServer{
+		Handler: xrps.HandleFunc(func(ctx context.Context, conn net.Conn) {
 			id := connID.Add(1)
 			s.outHandler(ctx, conn, id)
 		}),
@@ -171,8 +170,8 @@ func (s *Server) startListenClient() error {
 	}
 
 	var connID atomic.Int64
-	fs := &fsserver.AnyServer{
-		Handler: fsserver.HandleFunc(func(ctx context.Context, conn net.Conn) {
+	fs := &xrps.AnyServer{
+		Handler: xrps.HandleFunc(func(ctx context.Context, conn net.Conn) {
 			id := connID.Add(1)
 			s.clientHandler(ctx, conn, id)
 		}),

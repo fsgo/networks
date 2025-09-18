@@ -1,15 +1,9 @@
 module github.com/fsgo/networks
 
-go 1.22
+go 1.25.0
 
 require (
-	github.com/fsgo/fsgo v0.0.7-0.20240710132140-34d667eaee38
-	github.com/fsgo/fst v0.0.4
-	golang.org/x/sync v0.8.0
-)
-
-require (
-	github.com/fsgo/fscache v0.0.3 // indirect
-	github.com/vmihailenco/msgpack/v5 v5.4.0 // indirect
-	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
+	github.com/fsgo/fst v0.0.5
+	github.com/xanygo/anygo v0.0.0-20250918031713-d1eee1918375
+	golang.org/x/sync v0.17.0
 )

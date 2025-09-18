@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/fsgo/fsgo/fsflag"
-	"github.com/fsgo/fsgo/fsnet/fsdialer"
+	"github.com/xanygo/anygo/xcmd/xflag"
+	"github.com/xanygo/anygo/xnet"
 )
 
 type Client struct {
@@ -40,11 +40,10 @@ type Client struct {
 }
 
 func (c *Client) BindFlags() {
-	ef := fsflag.EnvFlags{}
-	ef.StringVar(&c.ServerAddr, "remote", "TT_C_remove", "127.0.0.1:8090", "remote tunnel server addr")
-	ef.StringVar(&c.LocalAddr, "local", "TT_C_local", "127.0.0.1:8128", "local server addr tunnel to")
-	ef.IntVar(&c.Worker, "worker", "TT_C_worker", 3, "worker number")
-	ef.StringVar(&c.Token, "token", "TT_C_token", defaultToken, "token")
+	xflag.EnvStringVar(&c.ServerAddr, "remote", "TT_C_remove", "127.0.0.1:8090", "remote tunnel server addr")
+	xflag.EnvStringVar(&c.LocalAddr, "local", "TT_C_local", "127.0.0.1:8128", "local server addr tunnel to")
+	xflag.EnvIntVar(&c.Worker, "worker", "TT_C_worker", 3, "worker number")
+	xflag.EnvStringVar(&c.Token, "token", "TT_C_token", defaultToken, "token")
 }
 
 func (c *Client) Start() error {
@@ -100,7 +99,6 @@ func (c *Client) connectToServer() io.ReadWriteCloser {
 		}
 		return rw
 	}
-	return nil
 }
 
 func (c *Client) connectToClient() io.ReadWriteCloser {
@@ -112,7 +110,7 @@ func (c *Client) connectTo(tp string, address string, id int64) io.ReadWriteClos
 		msg := fmt.Sprintf("[connect_%s] [%d] [try=%d] %s", tp, id, i, address)
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), c.getConnectTimeout())
-		conn, err := fsdialer.DialContext(ctx, "tcp", address)
+		conn, err := xnet.DialContext(ctx, "tcp", address)
 		cost := time.Since(start)
 		cancel()
 		if err != nil {
