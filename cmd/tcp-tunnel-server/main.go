@@ -13,7 +13,7 @@ import (
 	"github.com/fsgo/networks/tcptunnel"
 )
 
-var server = &tcptunnel.Server{}
+var server = tcptunnel.NewServer()
 
 func init() {
 	log.SetPrefix(fmt.Sprintf("[tcp-tunnel-client][pid=%d] ", os.Getpid()))

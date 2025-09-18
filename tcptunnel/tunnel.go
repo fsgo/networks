@@ -5,6 +5,7 @@
 package tcptunnel
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -46,6 +47,7 @@ func (c *Tunneler) Start() error {
 	var eg errgroup.Group
 	eg.Go(c.connectToRemote)
 	eg.Go(c.connectToLocal)
+	go c.startTrace()
 	return eg.Wait()
 }
 
@@ -102,4 +104,18 @@ func (c *Tunneler) localWorker(id int, ec chan<- error) {
 
 func (c *Tunneler) Stop() {
 	c.stopped.Store(true)
+}
+
+func (c *Tunneler) startTrace() {
+	tm := time.NewTicker(5 * time.Second)
+	defer tm.Stop()
+
+	for !c.stopped.Load() {
+		<-tm.C
+		info := map[string]any{
+			"remoteRWChan.Len": len(c.remoteRWChan),
+		}
+		bf, _ := json.Marshal(info)
+		log.Println("[Tunneler.trace]", string(bf))
+	}
 }

@@ -17,6 +17,14 @@ import (
 	"github.com/xanygo/anygo/xnet"
 )
 
+func NewClient() *Client {
+	return &Client{}
+}
+
+// Client 部署在内网，创建连接外网 server 和 内网 server 的隧道
+//
+//	会主动的持续和 外网 server 创建连接( OuterServer Conn )，当连接创建成功后，会创建和内网 server 的连接( InnerServer Conn)，
+//	数据流：UserClientConn <---> OuterServer Conn <---> InnerServer Conn
 type Client struct {
 	// ServerAddr 服务端的地址，必填，如 192.168.1.10:8080
 	ServerAddr string

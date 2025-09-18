@@ -22,6 +22,11 @@ import (
 	"github.com/fsgo/networks/internal"
 )
 
+func NewServer() *Server {
+	return &Server{}
+}
+
+// Server 用于提供外网服务
 type Server struct {
 	// ListenOut 对外转发的监听地址，必填
 	ListenOut string
