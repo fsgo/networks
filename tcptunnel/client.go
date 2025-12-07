@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/xanygo/anygo/xcmd/xflag"
+	"github.com/xanygo/anygo/cli/xflag"
 	"github.com/xanygo/anygo/xnet"
 )
 

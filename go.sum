@@ -1,6 +1,4 @@
-github.com/fsgo/fst v0.0.5 h1:c12J39shorNiS3X9QsK6sg/KUzw8FOA3IoKPb/upj7E=
-github.com/fsgo/fst v0.0.5/go.mod h1:vNB0la0LICDwsMuwD7KR8NNDnslYyH/1x1+fOamXra8=
-github.com/xanygo/anygo v0.0.0-20250918031713-d1eee1918375 h1:/aO4Jn6V3nvQGtcaobYsdJlYerItVIY0o8Z9cWjLi9A=
-github.com/xanygo/anygo v0.0.0-20250918031713-d1eee1918375/go.mod h1:dSnqbTtcdOp7ecJmShA4PRtftX0mCa696el8p2RN/eg=
-golang.org/x/sync v0.17.0 h1:l60nONMj9l5drqw6jlhIELNv9I0A4OFgRsG9k2oT9Ug=
-golang.org/x/sync v0.17.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=
+github.com/xanygo/anygo v0.0.0-20251205113023-33d4de815a72 h1:mr6M9I94I7sHISfRHfZxtw52+IseYSxbLQ7EJ92Qiw0=
+github.com/xanygo/anygo v0.0.0-20251205113023-33d4de815a72/go.mod h1:Z2c+FB/85TK4MnI6lIwGFAH0Q6/kQ3t6dGK8+IZAUxk=
+golang.org/x/sync v0.18.0 h1:kr88TuHDroi+UVf+0hZnirlk8o8T+4MrK6mr60WkH/I=
+golang.org/x/sync v0.18.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=

@@ -9,7 +9,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/fsgo/fst"
+	"github.com/xanygo/anygo/xt"
 )
 
 func Test_rwWithToken(t *testing.T) {
@@ -18,20 +18,20 @@ func Test_rwWithToken(t *testing.T) {
 		b1 := &tb{bf: bf}
 		w1 := rwWithToken(b1, "no")
 		_, e1 := w1.Write([]byte("hello"))
-		fst.NoError(t, e1)
-		fst.Equal(t, "hello", bf.String())
+		xt.NoError(t, e1)
+		xt.Equal(t, "hello", bf.String())
 		content, _ := io.ReadAll(w1)
-		fst.Equal(t, "hello", string(content))
+		xt.Equal(t, "hello", string(content))
 	})
 	t.Run("has", func(t *testing.T) {
 		bf := &bytes.Buffer{}
 		b1 := &tb{bf: bf}
 		w1 := rwWithToken(b1, "hello-world")
 		_, e1 := w1.Write([]byte("hello"))
-		fst.NoError(t, e1)
-		fst.NotEqual(t, "hello", bf.String())
+		xt.NoError(t, e1)
+		xt.NotEqual(t, "hello", bf.String())
 		content, _ := io.ReadAll(w1)
-		fst.Equal(t, "hello", string(content))
+		xt.Equal(t, "hello", string(content))
 	})
 }
 
