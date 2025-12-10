@@ -49,8 +49,8 @@ type Client struct {
 
 func (c *Client) BindFlags() {
 	xflag.EnvStringVar(&c.ServerAddr, "remote", "TT_C_remove", "127.0.0.1:8090", "remote tunnel server addr")
-	xflag.EnvStringVar(&c.LocalAddr, "local", "TT_C_local", "127.0.0.1:8128", "local server addr tunnel to")
-	xflag.EnvIntVar(&c.Worker, "worker", "TT_C_worker", 3, "worker number")
+	xflag.EnvStringVar(&c.LocalAddr, "local", "TT_C_local", "127.0.0.1:8080", "local server addr tunnel to")
+	xflag.EnvIntVar(&c.Worker, "worker", "TT_C_worker", 1, "worker number")
 	xflag.EnvStringVar(&c.Token, "token", "TT_C_token", defaultToken, "token")
 }
 

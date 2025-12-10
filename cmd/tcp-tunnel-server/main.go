@@ -16,7 +16,7 @@ import (
 var server = tcptunnel.NewServer()
 
 func init() {
-	log.SetPrefix(fmt.Sprintf("[tcp-tunnel-client][pid=%d] ", os.Getpid()))
+	log.SetPrefix(fmt.Sprintf("[tcp-tunnel-server][pid=%d] ", os.Getpid()))
 	server.BindFlags()
 }
 

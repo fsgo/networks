@@ -7,6 +7,8 @@ package tcptunnel
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,8 +18,8 @@ import (
 
 	"github.com/xanygo/anygo/cli/xflag"
 	"github.com/xanygo/anygo/ds/xsync"
+	"github.com/xanygo/anygo/xio"
 	"github.com/xanygo/anygo/xnet/xrps"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/fsgo/networks/internal"
 )
@@ -37,36 +39,32 @@ type Server struct {
 	// Token 加密密码，可选
 	Token string
 
-	ClientExpire time.Duration
+	clientMux    xsync.Value[*xio.Mux]
+	clientConnCh chan struct{}
 
-	Size int
+	cntStreamTotal    atomic.Int64 // 累计创建的 stream 总数
+	cntStreamErrTotal atomic.Int64 // stream 读写后 err!=nil 的总数
 
-	clientConns chan io.ReadWriteCloser
+	cntOuterNow   atomic.Int64 // 连接中的 OutHandler
+	cntOuterTotal atomic.Int64
 
-	lastUse xsync.TimeStamp
+	cntClientNow   atomic.Int64 // 连接中的 client
+	cntClientTotal atomic.Int64 // client 累计连接数
 }
 
 func (s *Server) BindFlags() {
 	xflag.EnvStringVar(&s.ListenOut, "out", "TT_S_out", "127.0.0.1:8100", "addr export")
 	xflag.EnvStringVar(&s.ListenClient, "in", "TT_S_in", ":8090", "addr for tunnel client")
 	xflag.EnvStringVar(&s.Token, "token", "TT_S_token", defaultToken, "token")
-	xflag.EnvIntVar(&s.Size, "size", "TT_S_size", 10, "connection chan buffer size")
-	xflag.EnvDurationVar(&s.ClientExpire, "exp", "TT_S_exp", 10*time.Minute, "client connections expire")
-}
-
-func (s *Server) getSize() int {
-	if s.Size > 0 {
-		return s.Size
-	}
-	return 10
 }
 
 func (s *Server) Start() error {
-	s.clientConns = make(chan io.ReadWriteCloser, s.getSize())
+	s.clientConnCh = make(chan struct{}, 1)
 
-	eg := &errgroup.Group{}
-	eg.Go(s.startListenOut)
-	eg.Go(s.startListenClient)
+	eg := &xsync.WaitGo{}
+	eg.GoErr(s.startListenOut)
+	eg.GoErr(s.startListenClient)
+	eg.GoErr(s.startTrace)
 	return eg.Wait()
 }
 
@@ -85,85 +83,63 @@ func (s *Server) startListenOut() error {
 			s.outHandler(ctx, conn, id)
 		}),
 	}
-	go s.cleanOldClients()
 	return fs.Serve(l)
 }
 
-func (s *Server) outHandler(ctx context.Context, conn net.Conn, id int64) {
-	msg := fmt.Sprintf("[server conn] [%d] ", id) + rwInfo(conn) + fmt.Sprintf(" client.len=%d", len(s.clientConns))
+func (s *Server) outHandler(ctx context.Context, localConn net.Conn, id int64) {
+	s.cntOuterNow.Add(1)
+	s.cntOuterTotal.Add(1)
+	defer func() {
+		s.cntOuterNow.Add(-1)
+		localConn.Close()
+	}()
+
+	msg := fmt.Sprintf("[server conn] [%d] ", id) + rwInfo(localConn)
 
 	log.Println(msg)
 	start := time.Now()
 
-	var exitErr error
-	defer func() {
-		cost := time.Since(start)
-		log.Println(msg, "closed, err=", exitErr, ",cost=", cost.String())
-	}()
+	var stream *xio.MuxStream
+	var err error
 
-	// tunnel-client 的 net.conn
-	var remote io.ReadWriteCloser
-	for idx := 0; idx < 100; idx++ {
-		select {
-		case remote = <-s.clientConns:
-		case <-ctx.Done():
-			exitErr = context.Cause(ctx)
-			return
+	for i := 0; i < 3; i++ {
+		mx := s.clientMux.Load()
+		if mx == nil {
+			err = errors.New("clientMux is nil, pls check tunnel-client")
+			log.Println("clientMux is nil, try=", i)
+			s.summoning()
+			select {
+			case <-ctx.Done():
+			case <-time.After(100 * time.Millisecond):
+			}
+			continue
 		}
-
-		exitErr = isBadConn(remote)
-
-		if exitErr == nil {
-			break
+		stream, err = mx.Open()
+		if err != nil {
+			log.Println("clientMux open failed:", err)
+			mx.Close()
+			s.summoning()
+			continue
 		}
-		_ = remote.Close()
-		log.Println(msg, "ignore bad conn, err=", exitErr, ",try=", idx)
+		s.cntStreamTotal.Add(1)
+		break
 	}
 
-	s.lastUse.Store(time.Now())
-
-	exitErr = internal.RWCopy(remote, conn)
+	if stream != nil {
+		log.Println(msg, "start RWCopy, sid=", stream.ID())
+		err = internal.RWCopy(stream, localConn)
+		if err != nil {
+			s.cntStreamErrTotal.Add(1)
+		}
+	}
+	cost := time.Since(start)
+	log.Println(msg, "closed, err=", err, ",cost=", cost.String(), ",cntOuter=", s.cntOuterNow.Load())
 }
 
-func (s *Server) cleanOldClients() {
-	if s.ClientExpire <= time.Second {
-		return
-	}
-	tm := time.NewTimer(5 * time.Second)
-	var dropID atomic.Int64
-
-	checkDrop := func() {
-		defer tm.Reset(time.Second)
-		dur := time.Since(s.lastUse.Load())
-		if dur < s.ClientExpire {
-			return
-		}
-
-		defer func() {
-			s.lastUse.Store(time.Now())
-		}()
-
-		for i := 0; i < len(s.clientConns); i++ {
-			select {
-			case in := <-s.clientConns:
-				id := dropID.Add(1)
-				e2 := in.Close()
-				log.Println("drop idle connection, ",
-					"drop_total=", id,
-					"idle_duration", dur.String(),
-					rwInfo(in),
-					"close=", e2,
-				)
-
-			default:
-				log.Println("no connections when check idle")
-				return
-			}
-		}
-	}
-
-	for range tm.C {
-		checkDrop()
+func (s *Server) summoning() {
+	select {
+	case <-s.clientConnCh:
+	default:
 	}
 }
 
@@ -184,8 +160,15 @@ func (s *Server) startListenClient() error {
 	return fs.Serve(l)
 }
 
+// clientHandler 处理 tcp-tunnel-client 发起的连接
 func (s *Server) clientHandler(ctx context.Context, conn net.Conn, id int64) {
-	msg := fmt.Sprintf("[client conn] [%d] ", id) + rwInfo(conn)
+	s.cntClientNow.Add(1)
+	defer s.cntClientNow.Add(-1)
+	s.cntClientTotal.Add(1)
+
+	start := time.Now()
+	msg := fmt.Sprintf("[tunnel client conn] [%d] ", id) + rwInfo(conn)
+	log.Println(msg, "ClientConnecting=", s.cntClientNow.Load())
 
 	rw := rwWithToken(conn, s.Token)
 
@@ -196,28 +179,33 @@ func (s *Server) clientHandler(ctx context.Context, conn net.Conn, id int64) {
 		return
 	}
 
-	ctx1, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
+	tk := time.NewTicker(time.Second)
+	defer tk.Stop()
 
-	select {
-	case s.clientConns <- rw:
-		log.Println(msg, "received, client.len=", len(s.clientConns))
-		return
-	case <-ctx1.Done():
-		// buffer 满的情况下，尝试将旧的连接取出，新的连接放进去
+	for idx := 0; ; idx++ {
 		select {
-		case in := <-s.clientConns:
-			_ = in.Close()
-			select {
-			case s.clientConns <- rw:
-				log.Println(msg, "replaced, client.len=", len(s.clientConns))
-			default:
-				log.Println(msg, "dropped by no buffer")
-				_ = rw.Close()
+		case s.clientConnCh <- struct{}{}:
+			waitTime := time.Since(start)
+			if err := isBadConn(conn); err != nil {
+				conn.Close()
+				log.Println(msg, "loop=", idx, ",isBadConn:", err, "wait=", waitTime.String())
+				return
 			}
-		default:
-			_ = rw.Close()
-			log.Println(msg, "dropped by replaced")
+			muc := xio.NewMux(false, rw)
+			old := s.clientMux.Swap(muc)
+			log.Println(msg, "replace as NewMux, loop=", idx, "wait=", waitTime.String())
+			if old != nil {
+				_ = old.Close()
+			}
+			return
+		case <-tk.C:
+			// 每秒检查一下当前连接是否完好，若连接已经断开则释放掉
+			waitTime := time.Since(start)
+			if err := isBadConn(conn); err != nil {
+				conn.Close()
+				log.Println(msg, "loop=", idx, ",isBadConn:", err, "wait=", waitTime.String())
+				return
+			}
 		}
 	}
 }
@@ -236,4 +224,25 @@ func (s *Server) checkClientConn(conn net.Conn, rw io.ReadWriteCloser) error {
 	}
 	_ = conn.SetDeadline(time.Time{})
 	return nil
+}
+
+func (s *Server) startTrace() error {
+	tm := time.NewTicker(5 * time.Second)
+	defer tm.Stop()
+
+	for {
+		<-tm.C
+		info := map[string]any{
+			"StreamCreated": s.cntStreamTotal.Load(),
+			"StreamErrs":    s.cntStreamErrTotal.Load(),
+
+			"OuterConnecting": s.cntOuterNow.Load(),
+			"OuterConnected":  s.cntOuterTotal.Load(),
+
+			"ClientConnecting": s.cntClientNow.Load(),
+			"ClientConnected":  s.cntClientTotal.Load(),
+		}
+		bf, _ := json.Marshal(info)
+		log.Println("[server.trace]", string(bf))
+	}
 }

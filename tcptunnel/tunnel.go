@@ -9,10 +9,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sort"
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/sync/errgroup"
+	"github.com/xanygo/anygo/ds/xsync"
+	"github.com/xanygo/anygo/safely"
+	"github.com/xanygo/anygo/xio"
 
 	"github.com/fsgo/networks/internal"
 )
@@ -30,46 +33,26 @@ type Tunneler struct {
 
 	Token string
 
-	remoteRWChan chan io.ReadWriteCloser
-	stopped      atomic.Bool
+	stopped atomic.Bool
+
+	cntStreamNow   atomic.Int64
+	cntStreamTotal atomic.Int64
+
+	cntRemoteTotal atomic.Int64 // 连接到远程 server 的总数
 }
 
 func (c *Tunneler) getWorker() int {
 	if c.Worker > 0 {
 		return c.Worker
 	}
-	return 3
+	return 1
 }
 
 func (c *Tunneler) Start() error {
-	c.remoteRWChan = make(chan io.ReadWriteCloser, c.getWorker())
-
-	var eg errgroup.Group
-	eg.Go(c.connectToRemote)
-	eg.Go(c.connectToLocal)
-	go c.startTrace()
+	var eg xsync.WaitGo
+	eg.GoErr(c.connectToLocal)
+	eg.Go(c.startTrace)
 	return eg.Wait()
-}
-
-func (c *Tunneler) connectToRemote() error {
-	ec := make(chan error, c.getWorker())
-	for i := 0; i < c.getWorker(); i++ {
-		go c.remoteWorker(i, ec)
-	}
-	return <-ec
-}
-
-func (c *Tunneler) remoteWorker(id int, ec chan<- error) {
-	defer func() {
-		ec <- fmt.Errorf("worker %d exit", id)
-	}()
-	for !c.stopped.Load() {
-		rw := c.RemoteRW()
-		if rw == nil {
-			break
-		}
-		c.remoteRWChan <- rw
-	}
 }
 
 func (c *Tunneler) connectToLocal() error {
@@ -84,21 +67,72 @@ func (c *Tunneler) localWorker(id int, ec chan<- error) {
 	defer func() {
 		ec <- fmt.Errorf("worker %d exit", id)
 	}()
-	for remoteConn := range c.remoteRWChan {
+
+	onRemote := func(conn io.ReadWriteCloser) {
+		defer conn.Close()
+
+		muc := xio.NewMux(true, conn)
+		defer muc.Close()
+
+		go func() {
+			tm := time.NewTicker(5 * time.Second)
+			for range tm.C {
+				var ids []int
+				muc.Range(func(s *xio.MuxStream) bool {
+					ids = append(ids, int(s.ID()))
+					return true
+				})
+				sort.Ints(ids)
+				log.Println("Tunneler MuxStream.IDS=", ids)
+			}
+		}()
+
+		var wg xsync.WaitGo
+		for {
+			stream, err := muc.Accept() // 接受到一个 server 传过来的连接
+			if err != nil {
+				log.Println("mux.Accept err:", err)
+				break
+			}
+			c.cntStreamTotal.Add(1)
+			num := c.cntStreamNow.Add(1)
+			log.Printf("mux.Accept stream sid=%d, cntStream=%d", stream.ID(), num)
+			wg.Go(func() {
+				defer func() {
+					stream.Close()
+					c.cntStreamNow.Add(-1)
+				}()
+
+				// 创建到本地端口的连接
+				localConn := c.LocalRW()
+				if localConn == nil {
+					return
+				}
+				start := time.Now()
+				log.Printf("start copy remote (sid=%d) to local", stream.ID())
+				err1 := internal.RWCopy(stream, localConn)
+				cost := time.Since(start)
+				log.Printf("copied remote (sid=%d) to local, cost=%s, err=%v", stream.ID(), cost.String(), err1)
+			})
+		}
+		muc.Close()
+		wg.Wait()
+	}
+
+	for !c.stopped.Load() {
+		remoteConn := c.RemoteRW()
+		if remoteConn == nil {
+			continue
+		}
+		c.cntRemoteTotal.Add(1)
 		if err := isBadConn(remoteConn); err != nil {
 			_ = remoteConn.Close()
 			log.Println("remote conn is bad, err=", err)
 			continue
 		}
-		localConn := c.LocalRW()
-		if localConn == nil {
-			break
-		}
-		start := time.Now()
-
-		err1 := internal.RWCopy(remoteConn, localConn)
-		cost := time.Since(start)
-		log.Println("copy remote to local, cost=", cost.String(), "err=", err1)
+		safely.RunVoid(func() {
+			onRemote(remoteConn)
+		})
 	}
 }
 
@@ -113,7 +147,10 @@ func (c *Tunneler) startTrace() {
 	for !c.stopped.Load() {
 		<-tm.C
 		info := map[string]any{
-			"remoteRWChan.Len": len(c.remoteRWChan),
+			"StreamWorking": c.cntStreamNow.Load(),
+			"StreamTotal":   c.cntStreamTotal.Load(),
+
+			"RemoteConnected": c.cntRemoteTotal.Load(),
 		}
 		bf, _ := json.Marshal(info)
 		log.Println("[Tunneler.trace]", string(bf))

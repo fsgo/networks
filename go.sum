@@ -1,4 +1,2 @@
-github.com/xanygo/anygo v0.0.0-20251205113023-33d4de815a72 h1:mr6M9I94I7sHISfRHfZxtw52+IseYSxbLQ7EJ92Qiw0=
-github.com/xanygo/anygo v0.0.0-20251205113023-33d4de815a72/go.mod h1:Z2c+FB/85TK4MnI6lIwGFAH0Q6/kQ3t6dGK8+IZAUxk=
-golang.org/x/sync v0.18.0 h1:kr88TuHDroi+UVf+0hZnirlk8o8T+4MrK6mr60WkH/I=
-golang.org/x/sync v0.18.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=
+github.com/xanygo/anygo v0.0.0-20251210030417-cce9128591a2 h1:RoJWYDf3WTSCzHeRcNk69SS2jlolmqIFvyPOeL/ESwg=
+github.com/xanygo/anygo v0.0.0-20251210030417-cce9128591a2/go.mod h1:Z2c+FB/85TK4MnI6lIwGFAH0Q6/kQ3t6dGK8+IZAUxk=
