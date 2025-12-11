@@ -49,7 +49,7 @@ func (c *Tunneler) getWorker() int {
 }
 
 func (c *Tunneler) Start() error {
-	var eg xsync.WaitGo
+	var eg xsync.WaitFirst
 	eg.GoErr(c.connectToLocal)
 	eg.Go(c.startTrace)
 	return eg.Wait()
@@ -87,7 +87,7 @@ func (c *Tunneler) localWorker(id int, ec chan<- error) {
 			}
 		}()
 
-		var wg xsync.WaitGo
+		var wg xsync.WaitGroup
 		for {
 			stream, err := muc.Accept() // 接受到一个 server 传过来的连接
 			if err != nil {

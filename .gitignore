@@ -19,3 +19,5 @@
 
 # Go workspace file
 go.work
+cmd/tcp-tunnel-server/tcp-tunnel-server
+cmd/tcp-tunnel-client/tcp-tunnel-client

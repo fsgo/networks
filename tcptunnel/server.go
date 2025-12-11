@@ -39,8 +39,9 @@ type Server struct {
 	// Token 加密密码，可选
 	Token string
 
-	clientMux    xsync.Value[*xio.Mux]
-	clientConnCh chan struct{}
+	clientMux  xsync.Value[*xio.Mux]
+	needConnCh chan struct{} // 需要一个新连接的信号
+	newConnCh  chan struct{} // 有一个新连接的信号
 
 	cntStreamTotal    atomic.Int64 // 累计创建的 stream 总数
 	cntStreamErrTotal atomic.Int64 // stream 读写后 err!=nil 的总数
@@ -59,9 +60,10 @@ func (s *Server) BindFlags() {
 }
 
 func (s *Server) Start() error {
-	s.clientConnCh = make(chan struct{}, 1)
+	s.needConnCh = make(chan struct{}, 1)
+	s.newConnCh = make(chan struct{})
 
-	eg := &xsync.WaitGo{}
+	eg := &xsync.WaitFirst{}
 	eg.GoErr(s.startListenOut)
 	eg.GoErr(s.startListenClient)
 	eg.GoErr(s.startTrace)
@@ -102,7 +104,7 @@ func (s *Server) outHandler(ctx context.Context, localConn net.Conn, id int64) {
 	var stream *xio.MuxStream
 	var err error
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 10; i++ {
 		mx := s.clientMux.Load()
 		if mx == nil {
 			err = errors.New("clientMux is nil, pls check tunnel-client")
@@ -110,7 +112,9 @@ func (s *Server) outHandler(ctx context.Context, localConn net.Conn, id int64) {
 			s.summoning()
 			select {
 			case <-ctx.Done():
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(50 * time.Millisecond):
+			case <-s.newConnCh:
+				// 已经创建好新的连接，立即重试
 			}
 			continue
 		}
@@ -138,7 +142,7 @@ func (s *Server) outHandler(ctx context.Context, localConn net.Conn, id int64) {
 
 func (s *Server) summoning() {
 	select {
-	case <-s.clientConnCh:
+	case <-s.needConnCh:
 	default:
 	}
 }
@@ -184,7 +188,7 @@ func (s *Server) clientHandler(ctx context.Context, conn net.Conn, id int64) {
 
 	for idx := 0; ; idx++ {
 		select {
-		case s.clientConnCh <- struct{}{}:
+		case s.needConnCh <- struct{}{}:
 			waitTime := time.Since(start)
 			if err := isBadConn(conn); err != nil {
 				conn.Close()
@@ -194,9 +198,18 @@ func (s *Server) clientHandler(ctx context.Context, conn net.Conn, id int64) {
 			muc := xio.NewMux(false, rw)
 			old := s.clientMux.Swap(muc)
 			log.Println(msg, "replace as NewMux, loop=", idx, "wait=", waitTime.String())
+			s.cntClientNow.Add(1)
 			if old != nil {
 				_ = old.Close()
+				s.cntClientNow.Add(-1)
 			}
+
+			select {
+			case s.newConnCh <- struct{}{}:
+				// outHandler 里会接收此信号，以立即使用该连接
+			default:
+			}
+
 			return
 		case <-tk.C:
 			// 每秒检查一下当前连接是否完好，若连接已经断开则释放掉
@@ -236,7 +249,7 @@ func (s *Server) startTrace() error {
 			"StreamCreated": s.cntStreamTotal.Load(),
 			"StreamErrs":    s.cntStreamErrTotal.Load(),
 
-			"OuterConnecting": s.cntOuterNow.Load() + 1,
+			"OuterConnecting": s.cntOuterNow.Load(),
 			"OuterConnected":  s.cntOuterTotal.Load(),
 
 			"ClientConnecting": s.cntClientNow.Load(),
