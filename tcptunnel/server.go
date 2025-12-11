@@ -236,7 +236,7 @@ func (s *Server) startTrace() error {
 			"StreamCreated": s.cntStreamTotal.Load(),
 			"StreamErrs":    s.cntStreamErrTotal.Load(),
 
-			"OuterConnecting": s.cntOuterNow.Load(),
+			"OuterConnecting": s.cntOuterNow.Load() + 1,
 			"OuterConnected":  s.cntOuterTotal.Load(),
 
 			"ClientConnecting": s.cntClientNow.Load(),
